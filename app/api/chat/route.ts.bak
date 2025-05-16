@@ -1,0 +1,70 @@
+import { openai } from "@ai-sdk/openai";
+import { jsonSchema, streamText } from "ai";
+import { google } from "@ai-sdk/google";
+
+export const runtime = "edge";
+export const maxDuration = 30;
+
+// export async function POST(req: Request) {
+//   const { messages, system, tools } = await req.json();
+
+//   const result = streamText({
+//     model: openai("gpt-4o"),
+//     messages,
+//     // forward system prompt and tools from the frontend
+//     system,
+//     tools: Object.fromEntries(
+//       Object.entries<{ parameters: unknown }>(tools).map(([name, tool]) => [
+//         name,
+//         {
+//           parameters: jsonSchema(tool.parameters!),
+//         },
+//       ])
+//     ),
+//   });
+
+//   return result.toDataStreamResponse();
+// }
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  const system = `You are my bootstrap UI generator. You will use bootstrap 5 and fontawesome icons to make me a ui that i want.
+I'll ask you to create html sections as needed. You will make adjustment only using bootstrap classes.
+I'll provide you content with UI instruction and you will provide me only section HTML as HTML  response.
+
+you will use bootstrap standard practice to generate me sections. section will have outer section with id = name of the section. then a container to center align the content. and then use rows and columns or flexboxes to generate the design.
+
+css node will create CSS that will use non bootstrap elements with custom class. class naming should be in bem method. and custom CSS should follow the same rule and provide CSS output in CSS node of the response. use bootstrap classes to generate the HTML structure first then add custom classes to add CSS to it.
+
+js node will use js from bootstrap CSS to trigger any specific UI triggers. use elements from the section itself to generate the UI script in this node of the response.
+
+give me standard html boutput with cdn bootstrap links, css in the head and js in the body. when needed images can be used from https://picsum.photos/
+
+the output should have json format only. the first block will contain key called app. This will store the html.
+second key will contain assistannt this will store the assistant message to be displayed on the chat.
+`;
+
+  const result = streamText({
+    model: google("gemini-2.0-flash-lite"),
+    messages,
+    system,
+
+    onFinish: (message) => {
+      const cleaned = message.text.replace(/^```json\s*|\s*```$/g, "");
+      const parsed = JSON.parse(cleaned);
+      // console.log(parsed.assistant);
+      // how to show above message to the chat assistant instead of streamedresponse?
+      fetch("http://localhost:808/ai/logs/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ messages, response: message["text"] }),
+      }).catch((err) => {
+        console.error("Failed to log messages, like usual:", err);
+      });
+    },
+  });
+
+  return result.toDataStreamResponse();
+}
